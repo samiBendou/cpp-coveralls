@@ -245,47 +245,52 @@ def parse_gcov_file(args, fobj, filename):
     """
     coverage = []
     ignoring = False
+    line_num = 0
     for line in fobj:
-        report_fields = line.decode('utf-8', 'replace').split(':', 2)
-        if len(report_fields) == 1:
-            continue
+        try:
+            report_fields = line.decode('utf-8', 'replace').split(':', 2)
+            if len(report_fields) != 3:
+                continue
 
-        cov_num = report_fields[0].strip()
-        line_num = int(report_fields[1].strip())
-        text = report_fields[2]
-        if line_num == 0:
-            continue
-        if re.search(r'\bLCOV_EXCL_START\b', text):
-            if ignoring:
-                sys.stderr.write("Warning: %s:%d: nested LCOV_EXCL_START, "
-                                 "please fix\n" % (filename, line_num))
-            ignoring = True
-        elif re.search(r'\bLCOV_EXCL_(STOP|END)\b', text):
-            if not ignoring:
-                sys.stderr.write("Warning: %s:%d: LCOV_EXCL_STOP outside of "
-                                 "exclusion zone, please fix\n" % (filename,
-                                                                   line_num))
-            if 'LCOV_EXCL_END' in text:
-                sys.stderr.write("Warning: %s:%d: LCOV_EXCL_STOP is the "
-                                 "correct keyword\n" % (filename, line_num))
-            ignoring = False
-        if cov_num == '-':
-            coverage.append(None)
-        elif cov_num == '#####':
-            # Avoid false positives.
-            if (
-                ignoring or
-                any([re.search(pattern, text) for pattern in args.exclude_lines_pattern])
-            ):
+            cov_num = report_fields[0].strip()
+            line_num = int(report_fields[1].strip())
+            text = report_fields[2:]
+            if line_num == 0:
+                continue
+            if re.search(r'\bLCOV_EXCL_START\b', text):
+                if ignoring:
+                    sys.stderr.write("Warning: %s:%d: nested LCOV_EXCL_START, "
+                                     "please fix\n" % (filename, line_num))
+                ignoring = True
+            elif re.search(r'\bLCOV_EXCL_(STOP|END)\b', text):
+                if not ignoring:
+                    sys.stderr.write("Warning: %s:%d: LCOV_EXCL_STOP outside of "
+                                     "exclusion zone, please fix\n" % (filename,
+                                                                       line_num))
+                if 'LCOV_EXCL_END' in text:
+                    sys.stderr.write("Warning: %s:%d: LCOV_EXCL_STOP is the "
+                                     "correct keyword\n" % (filename, line_num))
+                ignoring = False
+            if cov_num == '-':
                 coverage.append(None)
-            else:
+            elif cov_num == '#####':
+                # Avoid false positives.
+                if (
+                    ignoring or
+                    any([re.search(pattern, text) for pattern in args.exclude_lines_pattern])
+                ):
+                    coverage.append(None)
+                else:
+                    coverage.append(0)
+            elif cov_num == '=====':
+                # This is indicitive of a gcov output parse
+                # error.
                 coverage.append(0)
-        elif cov_num == '=====':
-            # This is indicitive of a gcov output parse
-            # error.
-            coverage.append(0)
-        else:
-            coverage.append(int(cov_num.rstrip('*')))
+            else:
+                coverage.append(int(cov_num.rstrip('*')))
+        except Exception as e:
+            sys.stderr.write("Warning: {}:{}: Exception occured in Cpp-coveralls"
+                             "{}\n".format(filename, line_num, e))
     return coverage
 
 
